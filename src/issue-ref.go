@@ -21,11 +21,7 @@ func init() {
 	// Regular expression is more lax than starndard owner/repo#N
 	// because my shell requires quoting of # even in interactive mode.
 	s := "^([-a-zA-Z0-9]+).([-a-zA-Z0-9]+).([1-9][0-9]*)$"
-	rx, err := regexp.Compile(s)
-	if err != nil {
-		panic("bug: issueRefRegex is invalid")
-	}
-	issueRefRegex = rx
+	issueRefRegex = regexp.MustCompile(s)
 }
 
 func (v *IssueRef) Set(s string) error {
