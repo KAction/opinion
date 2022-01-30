@@ -7,6 +7,7 @@ import (
 	"log"
 	"bytes"
 	"net/http"
+	"errors"
 	"strings"
 	"io"
 	"encoding/json"
@@ -74,21 +75,43 @@ type Issue struct {
 	Comments []Comment
 }
 
-func main() {
-	var issueRef src.IssueRef
+type Args struct {
+	Ref src.IssueRef
+	Token string
+}
 
-	flag.Var(&issueRef, "get", "issue reference in owner/repo#nnn format")
+func parseArgs() (*Args, error) {
+	envvar := "GITHUB_TOKEN"
+	var ref src.IssueRef
+
+	token, ok := os.LookupEnv(envvar)
+	if !ok {
+		msg := fmt.Sprintf("Environment variable `%s' is not set",
+			envvar)
+		return nil, errors.New(msg)
+	}
+	flag.Var(&ref, "get", "issue reference in owner/repo#nnn format")
 	flag.Parse()
-	if issueRef.Number == 0 {
-		fmt.Println("Processing data from stdin not implemented")
-		os.Exit(1)
+
+	if ref.Number == 0 {
+		msg := "Processing data from stdin not implemented"
+		return nil, errors.New(msg)
+	}
+	return &Args{Ref: ref, Token: token}, nil
+}
+
+
+func main() {
+	args, err := parseArgs()
+	if err != nil {
+		log.Fatal("Failed to parse arguments: %v", err)
 	}
 
 	var cursor *string
 	variables := map[string]interface{} {
-		"owner": issueRef.Owner,
-		"name": issueRef.Repo,
-		"number": issueRef.Number,
+		"owner": args.Ref.Owner,
+		"name": args.Ref.Repo,
+		"number": args.Ref.Number,
 		"batchSize": 20,
 		"cursor": cursor,
 	}
@@ -100,10 +123,6 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to marshal json: %v", err)
 	}
-	token, ok := os.LookupEnv("GITHUB_TOKEN")
-	if !ok {
-		log.Fatal("Environment variable `GITHUB_TOKEN' is not set")
-	}
 
 	req, err := http.NewRequest("POST", "https://api.github.com/graphql",
 		bytes.NewReader(payloadBS))
@@ -111,7 +130,7 @@ func main() {
 		log.Fatal("Failed to create request object: %v", err)
 	}
 		
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", args.Token))
 	client := &http.Client{}
 
 	resp, err := client.Do(req)
@@ -145,8 +164,8 @@ func main() {
 	// Ugly code that formats issue & comments somehow, without
 	// unmarshalling json into proper datatype hierarchy. Ugly python
 	// style.
-	header := fmt.Sprintf("%s/%s#%d%s %s", issueRef.Owner,
-		issueRef.Repo, issueRef.Number, status, title)
+	header := fmt.Sprintf("%s/%s#%d%s %s", args.Ref.Owner,
+		args.Ref.Repo, args.Ref.Number, status, title)
 	fmt.Printf("%s\n", header)
 	fmt.Printf("%s\n\n", strings.Repeat("=", len(header)))
 	fmt.Printf("%s\n", body)
